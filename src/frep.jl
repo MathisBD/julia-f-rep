@@ -3,10 +3,10 @@ include("dot_graph.jl")
 
 module Nodes
 using ..Vec3s, ..DotGraph
-import Base: convert
+import Base: convert, show
 
 export Op, Node, X, Y, Z, Const, Add, Sub, Mul, Div, Min, Max
-export topoiter, topomap, visualize
+export topoiter, topomap, visualize, constant_fold
 
 @enum Op X Y Z Const Add Sub Mul Div Min Max
 
@@ -23,6 +23,45 @@ struct Node{T <: Number}
         new{T}(op, [inp1], zero(T))
     Node{T}(op :: Op, inp1 :: Node{T}, inp2 :: Node{T}) where {T <: Number} = 
         new{T}(op, [inp1, inp2], zero(T))
+end
+
+function Base.show(io :: IO, n :: Node{T}) where {T}
+    if n.op == X || n.op == Y || n.op == Z
+        print(io, "Node{$T}($(n.op))")
+    elseif n.op == Const
+        print(io, "Node{$T}($(n.constant))")
+    else 
+        print(io, "Node{$T}($(n.op), $(n.inputs[1]), $(n.inputs[2]))")
+    end
+end
+
+function has_inputs(op :: Op) :: Bool
+    return op == Add || op == Sub || op == Mul || op == Div || op == Min || op == Max
+end
+
+function is_constant(node :: Node{T}, constant :: T) where {T}
+    return node.op == Const && node.constant == constant
+end
+
+# Apply an operator to numeric arguments. 
+# This doesn't work for all operators.
+function apply_op(::Val{Add}, a :: T, b :: T) :: T where {T} 
+    return a + b
+end
+function apply_op(::Val{Sub}, a :: T, b :: T) :: T where {T} 
+    return a - b
+end
+function apply_op(::Val{Mul}, a :: T, b :: T) :: T where {T} 
+    return a * b
+end
+function apply_op(::Val{Div}, a :: T, b :: T) :: T where {T} 
+    return a / b
+end
+function apply_op(::Val{Min}, a :: T, b :: T) :: T where {T} 
+    return min(a, b)
+end
+function apply_op(::Val{Max}, a :: T, b :: T) :: T where {T} 
+    return max(a, b)
 end
 
 # Convert a number to a node.
@@ -138,25 +177,15 @@ function (root :: Node{Tnode})(v :: Vec3{T}) :: T where {Tnode, T}
             return v.z
         elseif n.op == Const
             return convert(T, n.constant)
-        elseif n.op == Add
-            return children[1] + children[2]
-        elseif n.op == Sub
-            return children[1] - children[2]
-        elseif n.op == Mul
-            return children[1] * children[2]
-        elseif n.op == Div
-            return children[1] / children[2]
-        elseif n.op == Min
-            return min(children[1], children[2])
-        elseif n.op == Max
-            return max(children[1], children[2])
         else
-            error("unhandled value $(n.op) :: $(typeof(n.op))")
+            return apply_op(Val(n.op), children...)
         end
     end
 
     return topomap(T, helper, root)
 end
+
+include("frep_simplify.jl")
 
 end
 
@@ -175,12 +204,12 @@ Base.:&(a :: Node{T}, b :: Node{T}) where {T} = max(a, b)
 Base.:|(a :: Node{T}, b :: Node{T}) where {T} = min(a, b)
 
 
-function sphere(center :: Vec3{Node{T}}, radius :: Node{T}) :: Node{T} where {T}
+function sphere_aux(center :: Vec3{Node{T}}, radius :: Node{T}) :: Node{T} where {T}
     return dist2(center, axes(T)) - radius^2
 end
-#function sphere(center :: Vec3{T}, radius :: Node{T}) :: Node{T} where {T <: Number}
-#    return sphere(convert(Vec3{Node{T}}, center), radius)
-#end
+function sphere(center :: Vec3{T1}, radius :: T2) :: Node{T} where {T <: Number, T1 <: Union{T, Node{T}}, T2 <: Union{T, Node{T}}}
+    return sphere_aux(convert(Vec3{Node{T}}, center), convert(Node{T}, radius))
+end
 
 function cube_aux(low_vertex :: Vec3{Node{T}}, size :: Node{T}) :: Node{T} where {T} 
     let half_size = size / convert(T, 2)
@@ -207,12 +236,12 @@ end
 function scale_aux(s :: Node{T}, factor :: Node{T}) :: Node{T} where {T}
     return s(axes(T) / factor)
 end
-#function scale(s :: T1, factor :: Vec3{T2}) :: Node where {T1 <: Union{Node, Number}, T2 <: Union{Node, Number}}
-#    return scale(convert(Node, s), convert(Vec3{Node}, factor))
-#end
-#function scale(s :: T1, factor :: T2) :: Node where {T1 <: Union{Node, Number}, T2 <: Union{Node, Number}}
-#    return scale(convert(Node, s), Vec3(convert(Node, factor), convert(Node, factor), convert(Node, factor)))
-#end
+function scale(s :: T1, factor :: Vec3{T2}) :: Node where {T, T1 <: Union{T, Node{T}}, T2 <: Union{T, Node{T}}}
+    return scale_aux(convert(Node{T}, s), convert(Vec3{Node{T}}, factor))
+end
+function scale(s :: T1, factor :: T2) :: Node where {T, T1 <: Union{T, Node{T}}, T2 <: Union{T, Node{T}}}
+    return scale_aux(convert(Node{T}, s), convert(Node{T}, factor))
+end
 
 end
 
@@ -223,7 +252,7 @@ using .Shapes, .Vec3s, .Nodes
 function menger_sponge(n)
     @assert n >= 0
     if n == 0
-        return Shapes.cube(Vec3(0.0, 0.0, 0.0), Node{Float64}(1.0))
+        return Shapes.cube(Vec3(0.0, 0.0, 0.0), 1.0)
     else 
         m = menger_sponge(n-1)
         res = Shapes.empty(Float64)
@@ -236,6 +265,8 @@ function menger_sponge(n)
                 end
             end
         end
-        return Shapes.scale(res, Node{Float64}(1.0/3.0))
+        return Shapes.scale(res, 1.0/3.0)
     end
 end
+
+# menger sponge 3 @ 0.1, 0.1, 0.1 ==> 315ms +- 64ms
