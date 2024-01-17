@@ -14,22 +14,30 @@ function constant_fold_step(node :: Node{T}, new_inputs :: Vector{Node{T}}) wher
 
     # Some inputs are constants : we can apply some tricks.
     if node.op == Add
-        if is_constant(new_inputs[1], 0) 
+        if is_constant(new_inputs[1], zero(T)) 
             return new_inputs[2]
-        elseif is_constant(new_inputs[2], 0) 
+        elseif is_constant(new_inputs[2], zero(T)) 
             return new_inputs[1]
         end
     elseif node.op == Sub
-        if is_constant(new_inputs[2], 0)
+        if is_constant(new_inputs[2], zero(T))
             return new_inputs[1]
         end
     elseif node.op == Mul
-        if is_constant(new_inputs[1], 0) || is_constant(new_inputs[2], 0)
-            return Node{T}(0)
-        elseif is_constant(new_inputs[1], 1)
+        if is_constant(new_inputs[1], zero(T)) || is_constant(new_inputs[2], zero(T))
+            return Node{T}(zero(T))
+        elseif is_constant(new_inputs[1], one(T))
             return new_inputs[2]
-        elseif is_constant(new_inputs[2], 1)
+        elseif is_constant(new_inputs[2], one(T))
             return new_inputs[1]
+        end
+    elseif node.op == Div
+        if is_constant(new_inputs[1], zero(T)) 
+            return Node{T}(zero(T))
+        elseif is_constant(new_inputs[2], one(T))
+            return new_inputs[1]
+        elseif new_inputs[2].op == Const
+            return new_inputs[1] * (one(T) / new_inputs[2].constant)
         end
     end
 

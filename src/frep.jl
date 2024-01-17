@@ -245,6 +245,32 @@ end
 
 end
 
+
+# A representation of expression trees that is more efficient to evaluate.
+module Tapes
+
+@enum Op::UInt8 Copy LoadConst Sin Cos Exp Neg Sqrt Add Sub Mul Div Min Max
+
+struct Instruction 
+    op :: Op
+    out_slot :: UInt8
+    in_slotA :: UInt8
+    in_slotB :: UInt8
+end
+
+mutable struct Tape
+    instrs :: Vector{Op}
+    constants :: Vector{Float64}
+    slot_count :: Int
+end
+
+function node_to_tape(root :: Node{Float64})
+    # Get a topological sort of the nodes in the tree.
+    nodes = Node{T}
+end
+
+end
+
 using .Shapes, .Vec3s, .Nodes
 
 # Create a Menger sponge of depth n>=0,
