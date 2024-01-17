@@ -34,11 +34,11 @@ function rand_node_sized(rng, size :: Int)
     # Axis node.
     if op == X || op == Y || op == Z 
         @assert size == 0
-        return Node{Float64}(op)
+        return Node(op)
     # Constant node.
     elseif op == Const
         @assert size == 0
-        return Node{Float64}(rand_float64(rng))
+        return Node(rand_float64(rng))
     # Node with two inputs
     else
         @assert size > 0
@@ -48,11 +48,11 @@ function rand_node_sized(rng, size :: Int)
         
         left = rand_node_sized(rng, size_left)
         right = rand_node_sized(rng, size_right)
-        return Node{Float64}(op, left, right) 
+        return Node(op, left, right) 
     end
 end
 
-function generate(rng, ::Type{Node{Float64}}, n :: Int)
+function generate(rng, ::Type{Node}, n :: Int)
     max_size = 100
     return [rand_node_sized(rng, s) for s in rand(rng, 0:max_size, n)]
 end
@@ -66,11 +66,11 @@ end
 
 # FRep shrinking
 
-function shrinkable(n :: Node{Float64}) 
+function shrinkable(n :: Node) 
     return Nodes.has_inputs(n.op)
 end
 
-function shrink(n :: Node{Float64})
+function shrink(n :: Node)
     if !shrinkable(n) 
         return [n]
     end
@@ -82,15 +82,15 @@ end
 
 frep_tests = Quickcheck("FRep Tests")
 
-function compare(a :: Node{T}, b :: Node{T}, arg :: Vec3{T}) where {T}
+function compare(a :: Node, b :: Node, arg :: Vec3{Float64})
     tol = 0.001
     return abs(a(arg) - b(arg)) <= tol
 end
 
-@add_predicate frep_tests "Apply to axes" ((n :: Node{Float64}, arg :: Vec3{Float64}) -> 
-    compare(n, n(Shapes.axes(Float64)), arg))
+@add_predicate frep_tests "Apply to axes" ((n :: Node, arg :: Vec3{Float64}) -> 
+    compare(n, n(Shapes.axes), arg))
 
-@add_predicate frep_tests "Constant fold" ((n :: Node{Float64}, arg :: Vec3{Float64}) -> 
+@add_predicate frep_tests "Constant fold" ((n :: Node, arg :: Vec3{Float64}) -> 
     compare(n, constant_fold(n), arg))
 
 @quickcheck frep_tests
