@@ -68,13 +68,3 @@ function render(graph :: Graph)
 end
 
 end
-
-import .DotGraph
-
-g = DotGraph.Graph(true)
-x = DotGraph.add_node!(g, "x")
-y = DotGraph.add_node!(g, "y")
-z = DotGraph.add_node!(g, "z")
-DotGraph.add_edge!(g, x, y)
-DotGraph.add_edge!(g, x, z)
-DotGraph.add_edge!(g, z, x, "arrow")
