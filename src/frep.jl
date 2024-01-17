@@ -247,24 +247,62 @@ end
 module Tapes
 using ..Nodes, ..Vec3s
 
-@enum Op::UInt8 Copy LoadConst Sin Cos Exp Neg Sqrt Add Sub Mul Div Min Max
+@enum Opcode::UInt8 Copy LoadConst Sin Cos Exp Neg Sqrt Add Sub Mul Div Min Max
 
 struct Instruction 
-    op :: Op
+    opcode :: Opcode
     out_slot :: UInt8
     in_slotA :: UInt8
     in_slotB :: UInt8
 end
 
-mutable struct Tape
-    instrs :: Vector{Op}
-    constants :: Vector{Float64}
+struct Tape
+    instructions :: Vector{Instruction}
+    constant_pool :: Vector{Float64}
     slot_count :: Int
 end
 
-function node_to_tape(root :: Node)
+function node_to_tape(root :: Node) :: Tape
     # Get a topological sort of the nodes in the tree.
-    
+    nodes = Node[]
+    topoiter(n -> push!(nodes, n), root)
+    # And the index of each node in this topo sort.
+    node_idx = Dict{Node, Int}
+    for (i, n) in enumerate(nodes)
+        node_idx[node] = i
+    end
+
+    # Build the constant pool.
+    constant_pool = Float64[]
+    constant_idx = Dict{Node}
+    for n in nodes
+        if n.op == Const && !(n.constant in constant_pool)
+            push!(constant_pool, n.constant)
+            constant_idx[n.constant] = length(constant_pool)
+        end
+    end
+
+    # Compute the liveness of every node, i.e. 
+    # the index of the last node that uses its result
+    # (or -1 if its result is never used).
+    liveness = repeat([-1], length(nodes))
+    for (i, n) in enumerate(nodes)
+        if has_inputs(n)
+            for inp in n.inputs 
+                # The max is not strictly necessary but clarifies what we are doing.
+                liveness[node_idx[inp]] = max(i, liveness[node_idx[inp]])
+            end
+        end
+    end
+
+    # Build the instruction for each node.
+    slots = Node[] # TODO Node option
+
+    function get_free_slot()
+        for i in eachindex(slots)
+            if slots[i] = 
+    end
+
 end
 
 end
