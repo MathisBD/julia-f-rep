@@ -49,3 +49,35 @@ end
 function constant_fold(root :: Node)
     return topomap(Node, constant_fold_step, root)
 end
+
+
+function merge_axes(root :: Node)
+    local x :: Union{Nothing, Node} = nothing
+    local y :: Union{Nothing, Node} = nothing
+    local z :: Union{Nothing, Node} = nothing
+    
+    function helper(node :: Node, new_inputs :: Vector{Node})
+        if node.op == X
+            if isnothing(x) 
+                x = node
+            end
+            return x
+        elseif node.op == Y
+            if isnothing(y) 
+                y = node
+            end
+            return y
+        elseif node.op == Z
+            if isnothing(z) 
+                z = node
+            end
+            return z
+        elseif node.op == Const
+            return Node(node.constant)
+        else 
+            return Node(node.op, new_inputs...)
+        end
+    end
+
+    return topomap(Node, helper, root)
+end
