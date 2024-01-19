@@ -1,7 +1,7 @@
 module Vec3s
 import Base: convert
 
-export Vec3, dist2, dist
+export Vec3, dist2, dist, norm2, norm, normalize
 
 # A vector/point in 3-dimensional space.
 # The coordinates do not have to be floats.
@@ -21,7 +21,15 @@ function dist2(a :: Vec3{T}, b :: Vec3{T}) where {T}
 end
 
 function dist(a :: Vec3{T}, b :: Vec3{T}) where {T}
-    return sqrt(dist2(a, b))
+    return sqrt((a.x - b.x)^2 + (a.y - b.y)^2 + (a.z - b.z)^2)
+end
+
+function norm2(a :: Vec3{T}) where {T}
+    return a.x^2 + a.y^2 + a.z^2
+end
+
+function norm(a :: Vec3{T}) where {T}
+    return sqrt(a.x^2 + a.y^2 + a.z^2)
 end
 
 # Basic arithmetic on vectors. Operations are done element-wise.
@@ -41,5 +49,9 @@ Base.:/(a :: Vec3{T}, scale :: T) where {T} =
     Vec3(a.x / scale, a.y / scale, a.z / scale)
 Base.:/(a :: Vec3{T}, b :: Vec3{T}) where {T} = 
     Vec3(a.x / b.x, a.y / b.y, a.z / b.z)
+
+function normalize(a :: Vec3{T}) where {T}
+    return a / norm(a)
+end
 
 end

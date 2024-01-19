@@ -1,14 +1,13 @@
+
+include(joinpath(dirname(Base.active_project()), "src", "csg", "csg.jl"))
+
+using .Vec3s, .Nodes, .Shapes
+import .Tapes
+
 using JCheck
 import JCheck: generate, shrinkable, shrink
 
-include("../src/frep.jl")
-using .Vec3s, .Nodes, .Shapes
-
 # FRep generators
-
-#function generate(rng, ::Type{Op}, n :: Int)
-#    return rand(rng, instances(Op), n)
-#end
 
 # Return a random float64 in a reasonable range (contrary to what generate does).
 function rand_float64(rng)
@@ -27,8 +26,8 @@ function rand_node_sized(rng, size :: Int)
     if size == 0
         op = rand(rng, (X, Y, Z, Const))
     else 
-        #op = rand(rng, (Add, Sub, Mul, Div, Min, Max))
-        op = rand(rng, (Add, Sub, Mul, Min, Max))
+        # TODO : maybe add support for partial operations (Div, Sqrt, ...)
+        op = rand(rng, (Neg, Sin, Cos, Add, Sub, Mul, Min, Max))
     end
 
     # Axis node.
@@ -39,16 +38,22 @@ function rand_node_sized(rng, size :: Int)
     elseif op == Const
         @assert size == 0
         return Node(rand_float64(rng))
-    # Node with two inputs
-    else
+    # Node with one input.
+    elseif Nodes.has_one_input(op)
         @assert size > 0
-        
+        child = rand_node_sized(rng, size - 1)
+        return Node(op, child)
+    # Node with two inputs.
+    elseif Nodes.has_two_inputs(op)
+        @assert size > 0
         size_left = rand(rng, 0:(size-1))
         size_right = size - 1 - size_left
         
         left = rand_node_sized(rng, size_left)
         right = rand_node_sized(rng, size_right)
         return Node(op, left, right) 
+    else 
+        error("Unhandled op $(op) :: $(typeof(op))")
     end
 end
 
@@ -82,16 +87,19 @@ end
 
 frep_tests = Quickcheck("FRep Tests")
 
-function compare(a :: Node, b :: Node, arg :: Vec3{Float64})
+function compare(a, b)
     tol = 0.001
-    return abs(a(arg) - b(arg)) <= tol
+    return abs(a - b) <= tol
 end
 
 @add_predicate frep_tests "Apply to axes" ((n :: Node, arg :: Vec3{Float64}) -> 
-    compare(n, n(Shapes.axes), arg))
+    compare(n(arg), n(Shapes.axes)(arg)))
 
 @add_predicate frep_tests "Constant fold" ((n :: Node, arg :: Vec3{Float64}) -> 
-    compare(n, constant_fold(n), arg))
+    compare(n(arg), constant_fold(n)(arg)))
+
+@add_predicate frep_tests "Node to tape" ((n :: Node, arg :: Vec3{Float64}) ->
+    compare(n(arg), Tapes.run(Tapes.node_to_tape(n), arg.x, arg.y, arg.z)))
 
 @quickcheck frep_tests
 
