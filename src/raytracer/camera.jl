@@ -20,8 +20,10 @@ end
 #    |             |
 #    |             |
 # (-1,-1) ------ (1,-1)
-function make_ray(screen_x :: Float64, screen_y :: Float64) :: Vec3{Float64}
-
+function make_ray(camera :: Camera, screen_x :: Float64, screen_y :: Float64) :: Vec3{Float64}
+    ux = tan(camera.fov_deg / 2) * camera.right
+    uy = tan(camera.fov_deg / 2) / camera.aspect_ratio * camera.up
+    return camera.forward + screen_x * ux + screen_y * uy
 end
 
 end
