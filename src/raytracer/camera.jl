@@ -1,4 +1,7 @@
 module Cameras
+using ..Vec3s
+
+export Camera, Ray
 
 struct Camera
     pos :: Vec3{Float64}
@@ -8,22 +11,28 @@ struct Camera
     up :: Vec3{Float64}
     right :: Vec3{Float64}
     
-    # Horizontal field of view in degrees
-    fov_deg :: Float64
+    # Horizontal field of view in radians
+    fov_rad :: Float64
     # Aspect ratio (screen width / screen height) 
     aspect_ratio :: Float64
 end
 
-# screen_x and screen_y are coordinates between -1.0 and 1.0
-# (x-axis horizontal and y-axis vertical).
-# (-1, 1) ------ (1, 1)
-#    |             |
-#    |             |
-# (-1,-1) ------ (1,-1)
-function make_ray(camera :: Camera, screen_x :: Float64, screen_y :: Float64) :: Vec3{Float64}
-    ux = tan(camera.fov_deg / 2) * camera.right
-    uy = tan(camera.fov_deg / 2) / camera.aspect_ratio * camera.up
-    return camera.forward + screen_x * ux + screen_y * uy
+struct Ray
+    origin :: Vec3{Float64}
+    dir :: Vec3{Float64} # the direction should be normalized
+end
+
+@inline function (ray :: Ray)(t :: Float64) :: Vec3{Float64}
+   return ray.origin + t * ray.dir 
+end
+
+# x and y are screen coordinates between 0.0 and 1.0
+# (x-axis horizontal left-to-right and y-axis vertical top-to-bottom).
+@inline function make_ray(camera :: Camera, x :: Float64, y :: Float64) :: Ray
+    ux = tan(camera.fov_rad / 2) * camera.right
+    uy = tan(camera.fov_rad / 2) / camera.aspect_ratio * camera.up
+    dir = camera.forward + (2 * x - 1) * ux - (2 * y - 1) * uy
+    return Ray(camera.pos, normalize(dir))
 end
 
 end

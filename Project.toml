@@ -1,6 +1,8 @@
 [deps]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 GraphViz = "f526b714-d49f-11e8-06ff-31ed36ee7ee0"
+ImageView = "86fae568-95e7-573e-a6b2-d8a6b900c9ef"
+Images = "916415d5-f1e6-5110-898d-aaa5f9f070e0"
 JCheck = "852ab1b9-8b1f-4e09-8e6c-09fa7814d69a"
 MLStyle = "d8e11817-5142-5d16-987a-aa16d5891078"
 OhMyREPL = "5fb14364-9ced-5910-84b2-373655c76a03"
