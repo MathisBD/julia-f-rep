@@ -6,20 +6,17 @@ include(joinpath(dirname(Base.active_project()), "src", "voxelizer", "voxelizer.
 include(joinpath(dirname(Base.active_project()), "src", "raytracer", "raytracer.jl"))
 
 using ImageView, Images
-using .Vec3s, .Voxels, .Cameras, .NaiveRaytracer
+using .Vec3s, .Voxels, .Cameras, .NaiveRaytracer, .NaiveVoxelizer
 
 
 # Create the grid.
-voxels = Voxels.empty(Vec3(-10.0, -10.0, -10.0), 20.0, 512)
-for x in axes(voxels.mask, 1)
-    for y in axes(voxels.mask, 2)
-        for z in axes(voxels.mask, 3)
-            if x^2 + y^2 + z^2 <= 400^2
-                voxels.mask[x, y, z] = true
-            end
-        end
-    end
-end
+voxels = Voxels.empty(Vec3(-10.0, -10.0, -10.0), 20.0, 128)
+
+# Voxelize
+shape = Shapes.sphere(Vec3s.full(-10.0), 15.0)
+tape = Tapes.node_to_tape(shape)
+voxelize!(tape, voxels)
+
 # Create a target image.
 width = 200
 height = 150

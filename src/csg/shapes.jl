@@ -4,7 +4,7 @@ module Shapes
 using ..Vec3s, ..Nodes
 
 empty = Node(1.0)
-
+ 
 axes = Vec3{Node}(Node(X), Node(Y), Node(Z))
 
 # Shape intersection and union.
