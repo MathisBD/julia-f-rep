@@ -15,7 +15,7 @@ struct VoxelGrid
     mask :: BitArray{3}
 end
 
-function coords_to_world(grid :: VoxelGrid, coords :: Vec3{Int})
+function coords_to_world(grid :: VoxelGrid, coords :: Vec3{Int}) :: Vec3{Float64}
     return grid.world_pos + convert(Vec3{Float64}, coords) * grid.world_cell
 end
 

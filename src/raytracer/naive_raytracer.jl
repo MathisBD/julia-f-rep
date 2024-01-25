@@ -1,5 +1,5 @@
 module NaiveRaytracer
-using Images, ..Vec3s, ..Voxels, ..Cameras
+using Images, ..Vec3s, ..Voxels, ..Cameras, ..Tapes, ..TriDuals
 
 export render!
 
@@ -7,6 +7,7 @@ const black = RGB{N0f8}(0, 0, 0)
 const red = RGB{N0f8}(1, 0, 0)
 const white = RGB{N0f8}(1, 1, 1)
 
+# A negative [time] means there was no hit.
 struct Hit 
     time :: Float64
 end 
@@ -25,11 +26,11 @@ function raygrid_intersect(voxels, ray :: Ray)
     return (hit, t_enter, t_leave) 
 end
 
-function raytrace(voxels :: VoxelGrid, ray :: Ray) :: RGB{N0f8}
+function raytrace(voxels :: VoxelGrid, ray :: Ray) :: Hit
     # Check the ray enters the voxel grid.
     (hit, t_enter, _) = raygrid_intersect(voxels, ray)
     if !hit
-        return black
+        return Hit(-1.0)
     end
     
     # The time it takes to move one cell along a given axis.
@@ -50,11 +51,11 @@ function raytrace(voxels :: VoxelGrid, ray :: Ray) :: RGB{N0f8}
     coords_step = Vec3s.ite(ray.dir >= 0., Vec3s.full(1), Vec3s.full(-1))
 
     # Step through the voxels one at a time along the ray.
-    #t = t_enter
+    t = t_enter
     while 1 <= minimum(coords) && maximum(coords) <= voxels.dim
         # We hit something.
         if @inbounds voxels.mask[coords.x, coords.y, coords.z]
-            return red
+            return Hit(t)
         # Step one cell forward
         else
             # This is a vector of booleans with [true] where t_cross is minimal.
@@ -62,23 +63,40 @@ function raytrace(voxels :: VoxelGrid, ray :: Ray) :: RGB{N0f8}
             mask = t_cross == minimum(t_cross)
             @assert any(mask)
 
-            #t = minimum(t_cross)
+            t = minimum(t_cross)
             t_cross += Vec3s.ite(mask, t_step, Vec3s.full(0.))
             coords += Vec3s.ite(mask, coords_step, Vec3s.full(0))
         end
     end
 
-    return black
+    return Hit(-1.0)
 end
 
-function render!(img :: Array{RGB{N0f8}, 2}, camera :: Camera, voxels :: VoxelGrid)
+function shade(tape :: Tape, ray :: Ray, hit :: Hit) :: RGB{N0f8}
+    if hit.time < 0.
+        return black
+    else
+        pos = ray(hit.time)
+        x = TriDual(pos.x, 1., 0., 0.)
+        y = TriDual(pos.y, 0., 1., 0.)
+        z = TriDual(pos.z, 0., 0., 1.)
+        output = Tapes.run(tape, x, y, z)
+        
+        grad = normalize(Vec3(output.dx, output.dy, output.dz))
+        color = (grad + 1.0) / 2.0
+        return RGB{N0f8}(color.x, color.y, color.z)
+    end
+end
+
+function render!(img :: Array{RGB{N0f8}, 2}, camera :: Camera, voxels :: VoxelGrid, tape :: Tape)
     (screen_height, screen_width) = size(img)
     for screen_x in 1:screen_width
         for screen_y in 1:screen_height
             x = screen_x / Float64(screen_width)
             y = screen_y / Float64(screen_height)
             ray = Cameras.make_ray(camera, x, y)
-            color = raytrace(voxels, ray)
+            hit = raytrace(voxels, ray)
+            color = shade(tape, ray, hit)
             img[screen_y, screen_x] = color
         end
     end

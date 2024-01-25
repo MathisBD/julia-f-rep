@@ -31,24 +31,53 @@ function cube(low_vertex :: Vec3{T1}, size :: T2) :: Node where {T1 <: Union{Flo
     return cube_aux(convert(Vec3{Node}, low_vertex), convert(Node, size))
 end
 
-function translate_aux(s :: Node, ofs :: Vec3{Node}) :: Node
-    return s(axes - ofs)
+function translate(shape :: Node, ofs :: Vec3{Node}) :: Node
+    return shape(axes - ofs)
 end
-function translate(s :: T1, ofs :: Vec3{T2}) :: Node where {T1 <: Union{Float64, Node}, T2 <: Union{Float64, Node}}
-    return translate_aux(convert(Node, s), convert(Vec3{Node}, ofs))
+function translate(shape :: Node, ofs :: Vec3{Float64}) :: Node
+    return translate(shape, convert(Vec3{Node}, ofs))
 end
 
-function scale_aux(s :: Node, factor :: Vec3{Node}) :: Node
-    return s(axes / factor)
+function scale(shape :: Node, factor :: Vec3{Node}) :: Node
+    return shape(axes / factor)
 end
-function scale_aux(s :: Node, factor :: Node) :: Node
-    return s(axes / factor)
+function scale(shape :: Node, factor :: Vec3{Float64}) :: Node
+    return scale(shape, convert(Vec3{Node}, factor))
 end
-function scale(s :: T1, factor :: Vec3{T2}) :: Node where {T1 <: Union{Float64, Node}, T2 <: Union{Float64, Node}}
-    return scale_aux(convert(Node, s), convert(Vec3{Node}, factor))
+
+function scale(shape :: Node, factor :: Node) :: Node
+    return shape(axes / factor)
 end
-function scale(s :: T1, factor :: T2) :: Node where {T1 <: Union{Float64, Node}, T2 <: Union{Float64, Node}}
-    return scale_aux(convert(Node, s), convert(Node, factor))
+function scale(shape :: Node, factor :: Float64) :: Node
+    return scale(shape, convert(Node, factor))
 end
+
+function rotateX(shape :: Node, angle :: Node) :: Node
+    c = cos(-angle)
+    s = sin(-angle)
+    return shape(Vec3(Node(X), c * Node(Y) - s * Node(Z), s * Node(Y) + c * Node(Z)))
+end
+function rotateX(s :: Node, angle :: Float64) :: Node
+    return rotateX(s, convert(Node, angle))
+end
+
+function rotateY(shape :: Node, angle :: Node) :: Node
+    c = cos(-angle)
+    s = sin(-angle)
+    return shape(Vec3(c * Node(X) + s * Node(Z), Node(Y), -s * Node(X) + c * Node(Z)))
+end
+function rotateY(s :: Node, angle :: Float64) :: Node
+    return rotateY(s, convert(Node, angle))
+end
+
+function rotateZ(shape :: Node, angle :: Node) :: Node
+    c = cos(-angle)
+    s = sin(-angle)
+    return shape(Vec3(c * Node(X) - s * Node(Y), s * Node(X) + c * Node(Y), Node(Z)))
+end
+function rotateZ(s :: Node, angle :: Float64) :: Node
+    return rotateZ(s, convert(Node, angle))
+end
+    
 
 end

@@ -1,4 +1,5 @@
 include(joinpath(dirname(Base.active_project()), "src", "utils", "vec.jl"))
+include(joinpath(dirname(Base.active_project()), "src", "utils", "tri_dual.jl"))
 include(joinpath(dirname(Base.active_project()), "src", "utils", "dot_graph.jl"))
 
 include(joinpath(dirname(Base.active_project()), "src", "csg", "csg.jl"))
@@ -10,16 +11,22 @@ using .Vec3s, .Voxels, .Cameras, .NaiveRaytracer, .NaiveVoxelizer
 
 
 # Create the grid.
-voxels = Voxels.empty(Vec3(-10.0, -10.0, -10.0), 20.0, 128)
+voxels = Voxels.empty(Vec3s.full(-10.), 20., 256)
+
+# Create the shape.
+shape = Shapes.cube(Vec3s.full(-5.), 10.)
+sboxhape = Shapes.rotateX(shape, pi / 4)
+shape = Shapes.rotateY(shape, pi / 4)
+shape = Shapes.rotateZ(shape, pi / 4)
+shape &= -Shapes.sphere(Vec3(5.0, 0.0, 6.0), 6.0)
 
 # Voxelize
-shape = Shapes.sphere(Vec3s.full(-10.0), 15.0)
 tape = Tapes.node_to_tape(shape)
 voxelize!(tape, voxels)
 
 # Create a target image.
-width = 200
-height = 150
+width = 800
+height = 600
 img = fill(RGB{N0f8}(0, 0, 0), (height, width))
 # Create a camera looking down the z-axis.
 camera = Camera(
@@ -31,7 +38,7 @@ camera = Camera(
     Float64(width) / Float64(height)) # aspect ratio
 
 # Render the image
-render!(img, camera, voxels)
+render!(img, camera, voxels, tape)
 
 # Display the image
 imshow(img)

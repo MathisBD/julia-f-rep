@@ -208,8 +208,11 @@ function Base.print(io :: IO, tape :: Tape)
     end
 end
 
-function run(tape :: Tape, x :: Float64, y :: Float64, z :: Float64) :: Float64
-    slots = fill(0.0, tape.slot_count)
+# The type T we use to run the computations must be a number type
+# that supports conversion from Float64.
+function run(tape :: Tape, x :: T, y :: T, z :: T) :: T where {T <: Number}
+    # Initially fill the slots with a dummy value.
+    slots = fill(x, tape.slot_count)
     slots[1] = x
     slots[2] = y
     slots[3] = z
@@ -218,7 +221,7 @@ function run(tape :: Tape, x :: Float64, y :: Float64, z :: Float64) :: Float64
         if inst.op == Copy
             slots[inst.out_slot] = slots[inst.in_slotA]
         elseif inst.op == LoadConst
-            slots[inst.out_slot] = tape.constant_pool[inst.in_slotA]
+            slots[inst.out_slot] = convert(T, tape.constant_pool[inst.in_slotA])
         elseif inst.op == Sin
             slots[inst.out_slot] = sin(slots[inst.in_slotA])
         elseif inst.op == Cos
