@@ -116,9 +116,9 @@ function Base.cos(a :: Interval) :: Interval
     else
         TWO_PI = 2 * pi
         low = contains_int(a.low/TWO_PI - 1/2, a.high/TWO_PI - 1/2) ? 
-              -1. : min(sin(a.low), sin(a.high))    
+              -1. : min(cos(a.low), cos(a.high))    
         high = contains_int(a.low/TWO_PI, a.high/TWO_PI) ?
-               1. : max(sin(a.low), sin(a.high))
+               1. : max(cos(a.low), cos(a.high))
         return Interval(low, high)
     end
 end

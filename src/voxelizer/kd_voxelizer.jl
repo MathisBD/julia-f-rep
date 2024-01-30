@@ -12,7 +12,7 @@ function voxelize_rec(tape :: Tape, node_pos :: Vec3{Float64}, cell_size :: Floa
         for z in 1:d
             for y in 1:d
                 for x in 1:d
-                    pos = node_pos + fmap(Float64, Vec3(x, y, z)) * cell_size 
+                    pos = node_pos + fmap(Float64, Vec3(x-1, y-1, z-1)) * cell_size 
                     res = Tapes.run(tape, pos.x, pos.y, pos.z)
                     node.voxel_mask[x, y, z] = res <= 0.
                 end
@@ -27,7 +27,7 @@ function voxelize_rec(tape :: Tape, node_pos :: Vec3{Float64}, cell_size :: Floa
             for y in 1:d
                 for x in 1:d
                     # First use interval evaluation.
-                    pos = node_pos + fmap(Float64, Vec3(x, y, z)) * cell_size
+                    pos = node_pos + fmap(Float64, Vec3(x-1, y-1, z-1)) * cell_size
                     res = Tapes.run(tape, 
                         Interval(pos.x, pos.x + cell_size), 
                         Interval(pos.y, pos.y + cell_size), 
@@ -41,7 +41,7 @@ function voxelize_rec(tape :: Tape, node_pos :: Vec3{Float64}, cell_size :: Floa
                     # We need to create a child node.
                     else
                         node.node_mask[x, y, z] = true
-                        node.nodes[x, y, z] = voxelize_rec(tape, pos, cell_size / d, dims[2:length(dims)])
+                        node.nodes[x, y, z] = voxelize_rec(tape, pos, cell_size / dims[2], dims[2:length(dims)])
                     end
                 end
             end
@@ -59,7 +59,47 @@ function voxelize(tape :: Tape, world_pos :: Vec3{Float64}, world_size :: Float6
 end
 
 function flatten(voxels :: KdVoxelGrid) :: VoxelGrid
+    dim = prod(voxels.dims)
+    flat_voxels = Voxels.empty(voxels.world_pos, voxels.world_size, dim)
 
+    # Fill the cube starting at [ofs] (included) up to [ofs + size] (excluded).
+    function fill(ofs :: Vec3{Int}, size :: Int)
+        for z in 0:size-1
+            for y in 0:size-1
+                for x in 0:size-1
+                    flat_voxels.mask[ofs.x + x, ofs.y + y, ofs.z + z] = true
+                end
+            end
+        end    
+    end
+
+    function fill_rec(node :: Node, node_ofs :: Vec3{Int}, cell_size :: Int, dims)
+        d = dims[1]
+        for z in 1:d
+            for y in 1:d
+                for x in 1:d
+                    # recurse on the children
+                    if isa(node, InteriorNode) && node.node_mask[x, y, z]
+                        @assert length(dims) >= 2
+                        @assert !isnothing(node.nodes[x, y, z])
+                        @assert !node.voxel_mask[x, y, z]
+
+                        child_node_ofs = node_ofs + Vec3(x-1, y-1, z-1) * cell_size
+                        child_cell_size = div(cell_size, dims[2])
+                        fill_rec(node.nodes[x, y, z], child_node_ofs, child_cell_size, dims[2:length(dims)])
+                    end
+                    # fill the node's voxels
+                    if node.voxel_mask[x, y, z]
+                        fill(node_ofs + Vec3(x-1, y-1, z-1) * cell_size, cell_size)
+                    end
+                end
+            end
+        end
+    end
+
+    fill_rec(voxels.node, Vec3s.full(1), div(dim, voxels.dims[1]), voxels.dims)
+
+    return flat_voxels
 end
 
 end

@@ -8,22 +8,52 @@ include(joinpath(dirname(Base.active_project()), "src", "voxelizer", "voxelizer.
 include(joinpath(dirname(Base.active_project()), "src", "raytracer", "raytracer.jl"))
 
 using ImageView, Images
-using .Vec3s, .KdVoxels, .Cameras, .KdRaytracer, .KdVoxelizer
+using .Vec3s, .KdVoxels, .Cameras, .NaiveRaytracer, .KdVoxelizer
+
+# Create a Menger sponge of depth n>=0,
+# with side length 1 and centered at the origin
+ function menger_sponge(n)
+    @assert n >= 0 && n <= 4
+    if n == 0
+        return Shapes.cube(Vec3s.full(-0.5), 1.05)
+    else 
+        m = menger_sponge(n-1)
+        res = Shapes.empty
+        for dx in -1.:1.
+            for dy in -1.:1.
+                for dz in -1.:1.
+                    if abs(dx) + abs(dy) + abs(dz) > 1.
+                        res |= Shapes.translate(m, Vec3(dx, dy, dz))
+                    end
+                end
+            end
+        end
+        return Shapes.scale(res, 1.01/3.0)
+    end
+end
+
 
 # Create the shape.
-shape = Shapes.cube(Vec3s.full(-5.), 10.)
-sboxhape = Shapes.rotateX(shape, pi / 4)
+#shape = Shapes.cube(Vec3s.full(-6.), 12.)
+#shape = Shapes.rotateX(shape, pi / 4)
+#shape = Shapes.rotateY(shape, pi / 4)
+#shape = Shapes.rotateZ(shape, pi / 4)
+#shape &= -Shapes.sphere(Vec3(5.0, 0.0, 6.0), 7.0)
+shape = menger_sponge(2)
+shape = Shapes.scale(shape, 12.)
+shape = Shapes.rotateX(shape, pi / 4)
 shape = Shapes.rotateY(shape, pi / 4)
 shape = Shapes.rotateZ(shape, pi / 4)
-shape &= -Shapes.sphere(Vec3(5.0, 0.0, 6.0), 6.0)
+shape &= -Shapes.sphere(Vec3(5.0, 0.0, 6.0), 7.0)
 
 # Voxelize
-tape = Tapes.node_to_tape(shape)
-voxels = voxelize(tape, Vec3s.full(-10.), 20., [64])
+tape = Tapes.node_to_tape(Nodes.constant_fold(shape))
+voxels = voxelize(tape, Vec3s.full(-10.), 20., [8, 8, 4])
+voxels = flatten(voxels)
 
 # Create a target image.
-width = 800
-height = 600
+width = 1200
+height = 900
 img = fill(RGB{N0f8}(0, 0, 0), (height, width))
 # Create a camera looking down the z-axis.
 camera = Camera(

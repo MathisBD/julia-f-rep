@@ -82,7 +82,10 @@ function shade(tape :: Tape, ray :: Ray, hit :: Hit) :: RGB{N0f8}
         z = TriDual(pos.z, 0., 0., 1.)
         output = Tapes.run(tape, x, y, z)
         
-        grad = normalize(Vec3(output.dx, output.dy, output.dz))
+        grad = Vec3(output.dx, output.dy, output.dz)
+        if Vec3s.norm(grad) > 0.
+            grad = normalize(grad)
+        end
         color = (grad + 1.0) / 2.0
         return RGB{N0f8}(color.x, color.y, color.z)
     end

@@ -16,7 +16,7 @@ struct VoxelGrid
 end
 
 function coords_to_world(grid :: VoxelGrid, coords :: Vec3{Int}) :: Vec3{Float64}
-    return grid.world_pos + convert(Vec3{Float64}, coords) * grid.world_cell
+    return grid.world_pos + convert(Vec3{Float64}, coords - 1) * grid.world_cell
 end
 
 function empty(world_pos :: Vec3{Float64}, world_size :: Float64, dim :: Int)
