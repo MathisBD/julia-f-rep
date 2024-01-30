@@ -1,5 +1,5 @@
-module NaiveRaytracer
-using Images, ..Vec3s, ..Voxels, ..Cameras, ..Tapes, ..TriDuals
+module KdRaytracer
+using Images, ..Vec3s, ..KdVoxels, ..Cameras, ..Tapes, ..TriDuals
 
 export render!
 
@@ -22,54 +22,96 @@ function raygrid_intersect(voxels, ray :: Ray)
     t_enter = max(t_enter_axis.x, t_enter_axis.y, t_enter_axis.z)
     t_leave = min(t_leave_axis.x, t_leave_axis.y, t_leave_axis.z)
     # Determine if the ray hit the grid
-    hit = t_enter <= t_leave && 0.0 <= t_leave
-    return (hit, t_enter, t_leave) 
+    ishit = t_enter <= t_leave && 0.0 <= t_leave
+    return (ishit, t_enter, t_leave) 
 end
 
-function raytrace(voxels :: VoxelGrid, ray :: Ray) :: Hit
-    # Check the ray enters the voxel grid.
-    (hit, t_enter, _) = raygrid_intersect(voxels, ray)
-    if !hit
-        return Hit(-1.0)
-    end
-    
+function raytrace_once(voxels :: KdVoxelGrid, ray :: Ray, t_curr :: Float64)
+    level = 1
+    node = voxels.node
+    node_pos = voxels.world_pos
+    cell_size = voxels.world_size / voxels.dims[level]
+
     # The time it takes to move one cell along a given axis.
-    t_step = abs(voxels.world_cell / ray.dir)
+    t_step = abs(cell_size / ray.dir)
     t_eps = 0.5 * minimum(t_step)
     @assert t_eps > 0.
 
     # The coordinates of the cell we are in.
     # Don't forget Julia indexing starts at 1.
-    norm_pos = 1. + (ray(t_enter + t_eps) - voxels.world_pos) / voxels.world_cell
+    norm_pos = 1. + (ray(t_curr + t_eps) - node_pos) / cell_size
     coords = fmap(x -> floor(Int, x), norm_pos)
-    
+
     # The time until we enter a new cell along a given axis.
-    t_cross = t_enter + t_eps + 
-        voxels.world_cell * (fmap(Float64, coords) + fmap(Float64, ray.dir >= 0.) - norm_pos) / ray.dir
+    t_cross = t_curr + t_eps + 
+        cell_size * (fmap(Float64, coords) + fmap(Float64, ray.dir >= 0.) - norm_pos) / ray.dir
     # A vector of +1 / -1, indicating how to change the coordinates when 
     # advancing along the ray.
     coords_step = Vec3s.ite(ray.dir >= 0., Vec3s.full(1), Vec3s.full(-1))
 
     # Step through the voxels one at a time along the ray.
-    t = max(t_enter, 0.)
-    while 1 <= minimum(coords) && maximum(coords) <= voxels.dim
-        # We hit something.
-        if @inbounds voxels.mask[coords.x, coords.y, coords.z]
-            return Hit(t)
-        # Step one cell forward
+    while 1 <= minimum(coords) && maximum(coords) <= voxels.dims[level]
+        # We hit a voxel.
+        if node.voxel_mask[coords.x, coords.y, coords.z] || (isa(node, InteriorNode) && node.node_mask[coords.x, coords.y, coords.z])
+            return (true, t_curr)
+        # Recurse in the child node.
+        #elseif node <: InteriorNode && node.node_mask[coords.x, coords.y, coords.z]
+        #    @assert level < length(voxels.dims)
+        #    level += 1
+        #    node = node.nodes[coords.x, coords.y, coords.z]
+        #    node_pos += fmap(Float64, coords) * cell_size
+        #    
+        #    cell_size /= voxels.dims[level]
+        #    t_step /= voxels.dims[level]
+        #    t_eps /= voxels.dims[level]
+        #    
+        #    norm_pos = 1. + (ray(t_curr + t_eps) - node_pos) / cell_size
+        #    coords = fmap(x -> floor(Int, x), norm_pos)
+        #    @assert 1 <= minimum(coords) && maximum(coords) <= voxels.dims[level] 
+        #
+        #    t_cross = t_curr + t_eps + 
+        #        cell_size * (fmap(Float64, coords) + fmap(Float64, ray.dir >= 0.) - norm_pos) / ray.dir
+        # Step one cell forward.
         else
             # This is a vector of booleans with [true] where t_cross is minimal.
             # There can be several [true] coordinates.
             mask = t_cross == minimum(t_cross)
             @assert any(mask)
 
-            t = minimum(t_cross)
+            t_curr = minimum(t_cross)
             t_cross += Vec3s.ite(mask, t_step, Vec3s.full(0.))
             coords += Vec3s.ite(mask, coords_step, Vec3s.full(0))
         end
     end
 
-    return Hit(-1.0)
+    # We didn't hit anything.
+    return (false, t_curr)
+end
+
+# This uses the 'kd-restart' algorithm.
+function raytrace(voxels :: KdVoxelGrid, ray :: Ray) :: Hit
+    # Check the ray enters the voxel grid.
+    (ishit, t_enter_grid, t_leave_grid) = raygrid_intersect(voxels, ray)
+    if !ishit
+        return Hit(-1.0)
+    end
+
+    # Raytrace.
+    t_curr = max(t_enter_grid, 0.)
+    fuel = 10000
+    while t_curr < t_leave_grid - 0.01 && fuel > 0
+        (ishit, t_next) = raytrace_once(voxels, ray, t_curr)
+        @assert t_next >= t_curr
+        if ishit
+            return Hit(t_next)
+        else 
+            t_curr = t_next
+        end
+
+        fuel -= 1
+    end
+
+    return Hit(-1.)
 end
 
 function shade(tape :: Tape, ray :: Ray, hit :: Hit) :: RGB{N0f8}
@@ -88,7 +130,7 @@ function shade(tape :: Tape, ray :: Ray, hit :: Hit) :: RGB{N0f8}
     end
 end
 
-function render!(img :: Array{RGB{N0f8}, 2}, camera :: Camera, voxels :: VoxelGrid, tape :: Tape)
+function render!(img :: Array{RGB{N0f8}, 2}, camera :: Camera, voxels :: KdVoxelGrid, tape :: Tape)
     (screen_height, screen_width) = size(img)
     for screen_x in 1:screen_width
         for screen_y in 1:screen_height

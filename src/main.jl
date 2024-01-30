@@ -1,5 +1,6 @@
 include(joinpath(dirname(Base.active_project()), "src", "utils", "vec.jl"))
 include(joinpath(dirname(Base.active_project()), "src", "utils", "tri_dual.jl"))
+include(joinpath(dirname(Base.active_project()), "src", "utils", "interval.jl"))
 include(joinpath(dirname(Base.active_project()), "src", "utils", "dot_graph.jl"))
 
 include(joinpath(dirname(Base.active_project()), "src", "csg", "csg.jl"))
@@ -7,11 +8,7 @@ include(joinpath(dirname(Base.active_project()), "src", "voxelizer", "voxelizer.
 include(joinpath(dirname(Base.active_project()), "src", "raytracer", "raytracer.jl"))
 
 using ImageView, Images
-using .Vec3s, .Voxels, .Cameras, .NaiveRaytracer, .NaiveVoxelizer
-
-
-# Create the grid.
-voxels = Voxels.empty(Vec3s.full(-10.), 20., 256)
+using .Vec3s, .KdVoxels, .Cameras, .KdRaytracer, .KdVoxelizer
 
 # Create the shape.
 shape = Shapes.cube(Vec3s.full(-5.), 10.)
@@ -22,7 +19,7 @@ shape &= -Shapes.sphere(Vec3(5.0, 0.0, 6.0), 6.0)
 
 # Voxelize
 tape = Tapes.node_to_tape(shape)
-voxelize!(tape, voxels)
+voxels = voxelize(tape, Vec3s.full(-10.), 20., [64])
 
 # Create a target image.
 width = 800
@@ -43,11 +40,11 @@ render!(img, camera, voxels, tape)
 # Display the image
 imshow(img)
 
-function test()
-    for i in 1:1000
-        render!(img, camera, voxels)
-    end
-end
+#function test()
+#    for i in 1:1000
+#        render!(img, camera, voxels)
+#    end
+#end
 
 # render! (200*150 pixels), (64^3 voxels), sphere x^2 + y^2 + z^2 <= 45^2
 # --> 9.9ms
