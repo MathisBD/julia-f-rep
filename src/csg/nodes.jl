@@ -1,6 +1,7 @@
 module Nodes
 using ..Vec3s, ..DotGraph
 import Base: convert, show
+import ..SmoothMinMax: smooth_max, smooth_min
 
 export Op, Node, X, Y, Z, Const, Neg, Sin, Cos, Exp, Sqrt, Add, Sub, Mul, Div, Min, Max, SMin, SMax
 export topoiter, topomap, visualize, constant_fold, merge_axes
@@ -16,6 +17,7 @@ struct Node
     Node(op :: Op) = new(op, [], 0.0)
     Node(op :: Op, inp1 :: Node) = new(op, [inp1], 0.0)
     Node(op :: Op, inp1 :: Node, inp2 :: Node) = new(op, [inp1, inp2], 0.0)
+    #Node(op :: Op, inp1 :: Node, inp2 :: Node, c :: Float64) = new(op, [inp1, inp2], c)
 end
 
 
@@ -31,6 +33,7 @@ function has_inputs(op :: Op) :: Bool
     return has_one_input(op) || has_two_inputs(op)
 end
 
+
 function Base.show(io :: IO, n :: Node)
     if n.op == X || n.op == Y || n.op == Z
         print(io, "Node($(n.op))")
@@ -38,8 +41,12 @@ function Base.show(io :: IO, n :: Node)
         print(io, "Node($(n.constant))")
     elseif has_one_input(n.op)
         print(io, "Node($(n.op), $(n.inputs[1]))")
-    elseif has_two_inputs(n.op)
-        print(io, "Node($(n.op), $(n.inputs[1]), $(n.inputs[2]))")
+    elseif has_two_inputs(n.op) 
+        #if !has_const(n.op)
+            print(io, "Node($(n.op), $(n.inputs[1]), $(n.inputs[2]))")
+        #else 
+        #    print(io, "Node($(n.op), $(n.inputs[1]), $(n.inputs[2]), $(n.constant))")
+        #end
     else 
         error("Unhandled op $(n.op) :: $(typeof(n.op))")
     end
@@ -125,13 +132,22 @@ Base.max(a :: Node, b :: Node) = Node(Max, a, b)
 Base.max(a :: Node, b :: Float64) = Node(Max, a, Node(b))
 Base.max(a :: Float64, b :: Node) = Node(Max, Node(a), b)
 
-softmin(a :: Node, b :: Node) = Node(SMin, a, b)
-softmin(a :: Node, b :: Float64) = Node(SMin, a, Node(b))
-softmin(a :: Float64, b :: Node) = Node(SMin, Node(a), b)
 
-softmax(a :: Node, b :: Node) = Node(SMax, a, b)
-softmax(a :: Node, b :: Float64) = Node(SMax, a, Node(b))
-softmax(a :: Float64, b :: Node) = Node(SMax, Node(a), b)
+smooth_min(a :: Node, b :: Node)    = Node(SMin, a, b)
+smooth_min(a :: Node, b :: Float64) = Node(SMin, a, Node(b))
+smooth_min(a :: Float64, b :: Node) = Node(SMin, Node(a), b)
+
+smooth_max(a :: Node, b :: Node)    = Node(SMax, a, b)
+smooth_max(a :: Node, b :: Float64) = Node(SMax, a, Node(b))
+smooth_max(a :: Float64, b :: Node) = Node(SMax, Node(a), b)
+
+#smooth_min(a :: Node, b :: Node, scale :: Float64)    = Node(SMin, a, b, scale)
+#smooth_min(a :: Node, b :: Float64, scale :: Float64) = Node(SMin, a, Node(b), scale)
+#smooth_min(a :: Float64, b :: Node, scale :: Float64) = Node(SMin, Node(a), b, scale)
+#
+#smooth_max(a :: Node, b :: Node, scale :: Float64)    = Node(SMax, a, b, scale)
+#smooth_max(a :: Node, b :: Float64, scale :: Float64) = Node(SMax, a, Node(b), scale)
+#smooth_max(a :: Float64, b :: Node, scale :: Float64) = Node(SMax, Node(a), b, scale)
 
 function Base.:^(a :: Node, n :: Int) 
     @assert n >= 0
@@ -220,6 +236,10 @@ function (root :: Node)(v :: Vec3{T}) :: T where {T <: Union{Float64, Node}}
             return v.z
         elseif n.op == Const
             return convert(T, n.constant)
+        #elseif n.op == SMin
+        #    return smooth_min(children..., n.constant)
+        #elseif n.op == SMax
+        #    return smooth_max(children..., n.constant)
         else
             return apply_op(Val(n.op), children...)
         end

@@ -1,6 +1,6 @@
 # A representation of expression trees that is more efficient to evaluate.
 module Tapes
-using ..Vec3s, Printf
+using ..Vec3s, ..SmoothMinMax, Printf
 import ..Nodes
 import Base: print
 

@@ -1,5 +1,7 @@
 # Dual numbers with three partial derivatives.
 module TriDuals
+import ..SmoothMinMax: smooth_max, smooth_min
+using ..SmoothMinMax
 
 export TriDual
 

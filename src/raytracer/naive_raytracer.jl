@@ -76,7 +76,7 @@ function shade(tape :: Tape, ray :: Ray, hit :: Hit) :: RGB{N0f8}
     if hit.time < 0.
         return black
     else
-        pos = ray(hit.time)
+        pos = ray(hit.time - 0.1)
         x = TriDual(pos.x, 1., 0., 0.)
         y = TriDual(pos.y, 0., 1., 0.)
         z = TriDual(pos.z, 0., 0., 1.)

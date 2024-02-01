@@ -9,7 +9,7 @@ include(joinpath(dirname(Base.active_project()), "src", "voxelizer", "voxelizer.
 include(joinpath(dirname(Base.active_project()), "src", "raytracer", "raytracer.jl"))
 
 using ImageView, Images
-using .Vec3s, .KdVoxels, .Cameras, .NaiveRaytracer, .KdVoxelizer
+using .Vec3s, .KdVoxels, .Cameras, .NaiveRaytracer, ..SmoothMinMax
 
 # Create a Menger sponge of depth n>=0,
 # with side length 1 and centered at the origin
@@ -45,14 +45,14 @@ shape = Shapes.scale(shape, 12.)
 shape = Shapes.rotateX(shape, pi / 4)
 shape = Shapes.rotateY(shape, pi / 4)
 shape = Shapes.rotateZ(shape, pi / 4)
-shape &= -Shapes.sphere(Vec3(5.0, 0.0, 6.0), 7.0)
+shape = max(shape, -Shapes.sphere(Vec3(5.0, 0.0, 6.0), 7.0))
 
 # Voxelize
 tape = Tapes.node_to_tape(Nodes.constant_fold(shape))
 println("Tape instruction count : $(length(tape.instructions))")
 
-voxels = voxelize(tape, Vec3s.full(-10.), 20., [8, 8, 4])
-voxels = flatten(voxels)
+voxels = KdVoxelizer.voxelize(tape, Vec3s.full(-10.), 20., [8, 8, 4])
+voxels = KdVoxelizer.flatten(voxels)
 
 # Create a target image.
 width = 1200
