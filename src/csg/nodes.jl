@@ -2,10 +2,10 @@ module Nodes
 using ..Vec3s, ..DotGraph
 import Base: convert, show
 
-export Op, Node, X, Y, Z, Const, Neg, Sin, Cos, Exp, Sqrt, Add, Sub, Mul, Div, Min, Max
+export Op, Node, X, Y, Z, Const, Neg, Sin, Cos, Exp, Sqrt, Add, Sub, Mul, Div, Min, Max, SMin, SMax
 export topoiter, topomap, visualize, constant_fold, merge_axes
 
-@enum Op X Y Z Const Neg Sin Cos Exp Sqrt Add Sub Mul Div Min Max
+@enum Op X Y Z Const Neg Sin Cos Exp Sqrt Add Sub Mul Div Min Max SMin SMax
 
 struct Node
     op :: Op
@@ -24,7 +24,7 @@ function has_one_input(op :: Op) :: Bool
 end
 
 function has_two_inputs(op :: Op) :: Bool
-    return op == Add || op == Sub || op == Mul || op == Div || op == Min || op == Max
+    return op == Add || op == Sub || op == Mul || op == Div || op == Min || op == Max || op == SMin || op == SMax
 end
 
 function has_inputs(op :: Op) :: Bool
@@ -85,6 +85,12 @@ end
 function apply_op(::Val{Max}, a :: T, b :: T) :: T where {T} 
     return max(a, b)
 end
+function apply_op(::Val{SMin}, a :: T, b :: T) :: T where {T} 
+    return smooth_min(a, b)
+end
+function apply_op(::Val{SMax}, a :: T, b :: T) :: T where {T} 
+    return smooth_max(a, b)
+end
 
 # Convert a float to a node.
 convert(::Type{Node}, x :: Float64) = Node(x)
@@ -118,6 +124,14 @@ Base.min(a :: Float64, b :: Node) = Node(Min, Node(a), b)
 Base.max(a :: Node, b :: Node) = Node(Max, a, b)
 Base.max(a :: Node, b :: Float64) = Node(Max, a, Node(b))
 Base.max(a :: Float64, b :: Node) = Node(Max, Node(a), b)
+
+softmin(a :: Node, b :: Node) = Node(SMin, a, b)
+softmin(a :: Node, b :: Float64) = Node(SMin, a, Node(b))
+softmin(a :: Float64, b :: Node) = Node(SMin, Node(a), b)
+
+softmax(a :: Node, b :: Node) = Node(SMax, a, b)
+softmax(a :: Node, b :: Float64) = Node(SMax, a, Node(b))
+softmax(a :: Float64, b :: Node) = Node(SMax, Node(a), b)
 
 function Base.:^(a :: Node, n :: Int) 
     @assert n >= 0

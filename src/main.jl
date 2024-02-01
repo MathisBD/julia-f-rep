@@ -1,3 +1,4 @@
+include(joinpath(dirname(Base.active_project()), "src", "utils", "smooth_min_max.jl"))
 include(joinpath(dirname(Base.active_project()), "src", "utils", "vec.jl"))
 include(joinpath(dirname(Base.active_project()), "src", "utils", "tri_dual.jl"))
 include(joinpath(dirname(Base.active_project()), "src", "utils", "interval.jl"))
@@ -39,7 +40,7 @@ end
 #shape = Shapes.rotateY(shape, pi / 4)
 #shape = Shapes.rotateZ(shape, pi / 4)
 #shape &= -Shapes.sphere(Vec3(5.0, 0.0, 6.0), 7.0)
-shape = menger_sponge(2)
+shape = menger_sponge(1)
 shape = Shapes.scale(shape, 12.)
 shape = Shapes.rotateX(shape, pi / 4)
 shape = Shapes.rotateY(shape, pi / 4)
@@ -48,6 +49,8 @@ shape &= -Shapes.sphere(Vec3(5.0, 0.0, 6.0), 7.0)
 
 # Voxelize
 tape = Tapes.node_to_tape(Nodes.constant_fold(shape))
+println("Tape instruction count : $(length(tape.instructions))")
+
 voxels = voxelize(tape, Vec3s.full(-10.), 20., [8, 8, 4])
 voxels = flatten(voxels)
 

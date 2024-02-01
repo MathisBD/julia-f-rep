@@ -4,11 +4,11 @@ using ..Vec3s, Printf
 import ..Nodes
 import Base: print
 
-export Op, Copy, LoadConst, Sin, Cos, Exp, Neg, Sqrt, Add, Sub, Mul, Div, Min, Max
+export Op, Copy, LoadConst, Sin, Cos, Exp, Neg, Sqrt, Add, Sub, Mul, Div, Min, Max, SMin, SMax
 export Instruction, Tape, node_to_tape, run
 
 
-@enum Op::UInt8 Copy LoadConst Sin Cos Exp Neg Sqrt Add Sub Mul Div Min Max
+@enum Op::UInt8 Copy LoadConst Sin Cos Exp Neg Sqrt Add Sub Mul Div Min Max SMin SMax
 
 # An instruction should be as small as possible (32 bits at the moment).
 struct Instruction 
@@ -23,8 +23,6 @@ struct Tape
     instructions :: Vector{Instruction}
     # LoadConst instructions don't contain a float value,
     # but instead contain an index in the constant pool.
-    # The axis instructions (X, Y, Z) get converted to LoadConst
-    # instructions : the values (x, y, z) are the first three constants in the pool.
     constant_pool :: Vector{Float64}
     slot_count :: Int
 end
@@ -42,6 +40,8 @@ function node_op_to_tape_op(op :: Nodes.Op)
     elseif op == Nodes.Div  return Div
     elseif op == Nodes.Min  return Min
     elseif op == Nodes.Max  return Max
+    elseif op == Nodes.SMin  return SMin
+    elseif op == Nodes.SMax  return SMax
     else
         error("unhandled $op :: $(typeof(op))")
     end
@@ -244,6 +244,10 @@ function run(tape :: Tape, x :: T, y :: T, z :: T) :: T where {T <: Number}
             slots[inst.out_slot] = min(slots[inst.in_slotA], slots[inst.in_slotB])
         elseif inst.op == Max
             slots[inst.out_slot] = max(slots[inst.in_slotA], slots[inst.in_slotB])
+        elseif inst.op == SMin
+            slots[inst.out_slot] = smooth_min(slots[inst.in_slotA], slots[inst.in_slotB])
+        elseif inst.op == SMax
+            slots[inst.out_slot] = smooth_max(slots[inst.in_slotA], slots[inst.in_slotB])
         else
             error("Unhandled op : $(inst.op) :: $(typeof(inst.op))")
         end

@@ -112,4 +112,22 @@ function Base.max(a :: TriDual, b :: TriDual) :: TriDual
     return a.val >= b.val ? a : b
 end
 
+function smooth_max(a :: TriDual, b :: TriDual) :: TriDual
+    (d1, d2) = smooth_max_grad(a.val, b.val)
+    return TriDual(
+        smooth_max(a.val, b.val),
+        d1 * a.dx + d2 * b.dx,
+        d1 * a.dy + d2 * b.dy,
+        d1 * a.dz + d2 * b.dz)
+end
+
+function smooth_min(a :: TriDual, b :: TriDual) :: TriDual
+    (d1, d2) = smooth_min_grad(a.val, b.val)
+    return TriDual(
+        smooth_min(a.val, b.val),
+        d1 * a.dx + d2 * b.dx,
+        d1 * a.dy + d2 * b.dy,
+        d1 * a.dz + d2 * b.dz)
+end
+
 end 
