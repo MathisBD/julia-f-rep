@@ -3,7 +3,7 @@ using ..Vec3s, ..Voxels, ..Tapes
 
 export voxelize!
 
-function voxelize!(tape :: Tape, voxels :: VoxelGrid)
+function voxelize!(voxels :: VoxelGrid, tape :: Tape)
     for z in 1:voxels.dim
         for y in 1:voxels.dim
             for x in 1:voxels.dim

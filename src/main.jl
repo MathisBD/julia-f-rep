@@ -8,12 +8,12 @@ include(joinpath(dirname(Base.active_project()), "src", "csg", "csg.jl"))
 include(joinpath(dirname(Base.active_project()), "src", "voxelizer", "voxelizer.jl"))
 include(joinpath(dirname(Base.active_project()), "src", "raytracer", "raytracer.jl"))
 
-using ImageView, Images
+using ImageView, Images, Printf
 using .Vec3s, .KdVoxels, .Cameras, .NaiveRaytracer, ..SmoothMinMax
 
 # Create a Menger sponge of depth n>=0,
 # with side length 1 and centered at the origin
- function menger_sponge(n)
+function menger_sponge(n)
     @assert n >= 0 && n <= 4
     if n == 0
         return Shapes.cube(Vec3s.full(-0.5), 1.05)
@@ -35,24 +35,23 @@ end
 
 
 # Create the shape.
-#shape = Shapes.cube(Vec3s.full(-6.), 12.)
-#shape = Shapes.rotateX(shape, pi / 4)
-#shape = Shapes.rotateY(shape, pi / 4)
-#shape = Shapes.rotateZ(shape, pi / 4)
-#shape &= -Shapes.sphere(Vec3(5.0, 0.0, 6.0), 7.0)
 shape = menger_sponge(1)
 shape = Shapes.scale(shape, 12.)
 shape = Shapes.rotateX(shape, pi / 4)
 shape = Shapes.rotateY(shape, pi / 4)
 shape = Shapes.rotateZ(shape, pi / 4)
-shape = max(shape, -Shapes.sphere(Vec3(5.0, 0.0, 6.0), 7.0))
+shape &= -Shapes.sphere(Vec3(5.0, 0.0, 6.0), 7.0)
 
 # Voxelize
 tape = Tapes.node_to_tape(Nodes.constant_fold(shape))
 println("Tape instruction count : $(length(tape.instructions))")
 
-voxels = KdVoxelizer.voxelize(tape, Vec3s.full(-10.), 20., [8, 8, 4])
-voxels = KdVoxelizer.flatten(voxels)
+#dims = [4, 4, 4]
+#voxels = Voxels.empty(Vec3s.full(-10.), 20., prod(dims))
+#NaiveVoxelizer.voxelize!(voxels, tape)
+
+#voxels = KdVoxelizer.voxelize(tape, Vec3s.full(-10.), 20., dims)
+#voxels = KdVoxelizer.flatten(voxels)
 
 # Create a target image.
 width = 1200
@@ -68,41 +67,69 @@ camera = Camera(
     Float64(width) / Float64(height)) # aspect ratio
 
 # Render the image
-render!(img, camera, voxels, tape)
+#render!(img, camera, voxels, tape)
 
 # Display the image
-imshow(img)
+#imshow(img)
 
-#function test()
-#    for i in 1:1000
-#        render!(img, camera, voxels)
-#    end
-#end
+function decomp(dim :: Int)
+    @assert dim > 0
 
-# render! (200*150 pixels), (64^3 voxels), sphere x^2 + y^2 + z^2 <= 45^2
-# --> 9.9ms
+    MIN_FACTOR = 4
+    MAX_FACTOR = 32
 
+    if dim < MIN_FACTOR
+        return []
+    else
+        results = []
+        if dim <= MAX_FACTOR
+            push!(results, [dim])
+        end
 
-# Create a Menger sponge of depth n>=0,
-# with side length 1 and centered at the origin
-# function menger_sponge(n)
-#    @assert n >= 0
-#    if n == 0
-#        return Shapes.cube(Vec3(0.0, 0.0, 0.0), 1.0)
-#    else 
-#        m = menger_sponge(n-1)
-#        res = Shapes.empty
-#        for dx in -1.0:1.0
-#            for dy in -1.0:1.0
-#                for dz in -1.0:1.0
-#                    if abs(dx) + abs(dy) + abs(dz) > 1.0
-#                        res |= Shapes.translate(m, Vec3(dx, dy, dz))
-#                    end
-#                end
-#            end
-#        end
-#        return Shapes.scale(res, 1.0/3.0)
-#    end
-#end
-#
-# menger sponge 3 @ 0.1, 0.1, 0.1 ==> 315ms +- 64ms
+        head = MIN_FACTOR
+        while head <= dim && head <= MAX_FACTOR
+            for tail in decomp(div(dim, head))
+                push!(results, vcat([head], tail))
+            end
+
+            head *= 2
+        end
+
+        return results
+    end
+end
+
+function benchmark_kd_voxelizer(dim :: Int)
+    results = []
+    dims_to_bench = decomp(dim)
+    println("$(length(dims_to_bench)) configs to benchmark.")
+    for dims in dims_to_bench
+        println(">>> $dims")
+        res = @benchmark KdVoxelizer.voxelize(tape, Vec3s.full(-10.), 20., $dims)
+        push!(results, (dims, mean(res.times)))
+    end
+
+    sort!(results, by = x -> x[2])
+
+    for (dims, time) in results
+        @printf("%s\t ==> %.0fms\n", string(dims), time / 1e6)
+    end
+end
+
+# Benchmarking kd-voxelizer (menger_sponge(1) with a sphere cut out) :
+# [4, 8, 4, 4]     ==> 7002ms
+# [8, 4, 4, 4]     ==> 7489ms
+# [32, 4, 4]       ==> 7573ms
+# [4, 4, 8, 4]     ==> 7927ms
+# [16, 8, 4]       ==> 8090ms
+# [8, 16, 4]       ==> 8866ms
+# [4, 32, 4]       ==> 10466ms
+# [4, 16, 8]       ==> 13371ms
+# [16, 4, 8]       ==> 13945ms
+# [8, 8, 8]        ==> 13989ms
+# [4, 4, 4, 8]     ==> 14069ms
+# [4, 8, 16]       ==> 25299ms
+# [8, 4, 16]       ==> 26346ms
+# [32, 16]         ==> 26916ms
+# [4, 4, 32]       ==> 48322ms
+# [16, 32]         ==> 48422ms
