@@ -75,25 +75,17 @@ end
 
 const MAX_SLOT_COUNT = 32
 
-function voxelize_kernel(
-    dim :: Int,
-    grid_pos :: Vec3{Float64},
-    grid_size :: Float64,
+function run_tape(
     instructions_d :: CuDeviceArray{Instruction}, 
     constants_d :: CuDeviceArray{Float64},
-    voxels_d :: CuDeviceArray{Bool, 3})
+    wx :: Float64, 
+    wy :: Float64, 
+    wz :: Float64) :: Float64
 
-    x = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    y = (blockIdx().y - 1) * blockDim().y + threadIdx().y
-    z = (blockIdx().z - 1) * blockDim().z + threadIdx().z
-    #thread = (threadIdx().z - 1) * blockDim().y * blockDim.x + 
-    #         (threadIdx().y - 1) * blockDim().x + 
-    #         threadIdx().x 
-    
     slots = zeros(MVector{MAX_SLOT_COUNT, Float64})
-    slots[1] = (x - 1) * grid_size / Float64(dim) + grid_pos.x 
-    slots[2] = (y - 1) * grid_size / Float64(dim) + grid_pos.y
-    slots[3] = (z - 1) * grid_size / Float64(dim) + grid_pos.z
+    slots[1] = wx
+    slots[2] = wy    
+    slots[3] = wz
     
     @inbounds for inst in instructions_d
         if inst.op == Copy
@@ -126,8 +118,30 @@ function voxelize_kernel(
             error("run_gpu -- unhandled op")
         end
     end
+    return slots[1]
+end
+
+function voxelize_kernel(
+    dim :: Int,
+    grid_pos :: Vec3{Float64},
+    grid_size :: Float64,
+    instructions_d :: CuDeviceArray{Instruction}, 
+    constants_d :: CuDeviceArray{Float64},
+    voxels_d :: CuDeviceArray{Bool, 3})
+
+    x = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    y = (blockIdx().y - 1) * blockDim().y + threadIdx().y
+    z = (blockIdx().z - 1) * blockDim().z + threadIdx().z
+    #thread = (threadIdx().z - 1) * blockDim().y * blockDim.x + 
+    #         (threadIdx().y - 1) * blockDim().x + 
+    #         threadIdx().x 
     
-    if slots[1] <= 0.
+    wx = (x - 1) * grid_size / Float64(dim) + grid_pos.x 
+    wy = (y - 1) * grid_size / Float64(dim) + grid_pos.y
+    wz = (z - 1) * grid_size / Float64(dim) + grid_pos.z
+    res = run_tape(instructions_d, constants_d, wx, wy, wz)
+
+    if res <= 0.
         @inbounds voxels_d[x, y, z] = true
     else 
         @inbounds voxels_d[x, y, z] = false
@@ -160,9 +174,9 @@ function voxelize_gpu(dim :: Int, tape :: Tape, grid_pos :: Vec3{Float64}, grid_
     return Array(voxels_d)
 end
 
-function main()
+#function main()
     # Create the shape.
-    shape = menger_sponge(2)
+    shape = menger_sponge(1)
     shape = Shapes.scale(shape, 12.)
     shape = Shapes.rotateX(shape, pi / 4)
     shape = Shapes.rotateY(shape, pi / 4)
@@ -202,7 +216,7 @@ function main()
 
     # Display the image
     imshow(img)
-end
+#end
 
 # Benchmarking kd-voxelizer (menger_sponge(1) with a sphere cut out) :
 # [4, 8, 4, 4]     ==> 7002ms
