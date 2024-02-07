@@ -10,3 +10,9 @@ To profile using nsys :
 $ nsys launch --trace=cuda,nvtx julia
 And then in julia :
 > Cuda.@profile external=true ...
+
+To profile using ncu :
+$ ncu --mode=launch julia
+This will hang on the first call to the CUDA API. Launch the GUI :
+$ ncu-ui
+Select an interactive profile, attach to the julia process, and resume the application (run until kernel launch), then profile the kernel.

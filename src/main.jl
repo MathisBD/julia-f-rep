@@ -73,16 +73,16 @@ function main_old()
     imshow(img)
 end
 
-const MAX_SLOT_COUNT = 32
+const MAX_SLOT_COUNT = 16
 
 function run_tape(
     instructions_d :: CuDeviceArray{Instruction}, 
-    constants_d :: CuDeviceArray{Float64},
-    wx :: Float64, 
-    wy :: Float64, 
-    wz :: Float64) :: Float64
+    constants_d :: CuDeviceArray{Float32},
+    wx :: Float32, 
+    wy :: Float32, 
+    wz :: Float32) :: Float32
 
-    slots = zeros(MVector{MAX_SLOT_COUNT, Float64})
+    slots = zeros(MVector{MAX_SLOT_COUNT, Float32})
     slots[1] = wx
     slots[2] = wy    
     slots[3] = wz
@@ -123,10 +123,10 @@ end
 
 function voxelize_kernel(
     dim :: Int,
-    grid_pos :: Vec3{Float64},
-    grid_size :: Float64,
+    grid_pos :: Vec3{Float32},
+    grid_size :: Float32,
     instructions_d :: CuDeviceArray{Instruction}, 
-    constants_d :: CuDeviceArray{Float64},
+    constants_d :: CuDeviceArray{Float32},
     voxels_d :: CuDeviceArray{Bool, 3})
 
     x = (blockIdx().x - 1) * blockDim().x + threadIdx().x
@@ -136,12 +136,12 @@ function voxelize_kernel(
     #         (threadIdx().y - 1) * blockDim().x + 
     #         threadIdx().x 
     
-    wx = (x - 1) * grid_size / Float64(dim) + grid_pos.x 
-    wy = (y - 1) * grid_size / Float64(dim) + grid_pos.y
-    wz = (z - 1) * grid_size / Float64(dim) + grid_pos.z
+    wx = (x - 1) * grid_size / Float32(dim) + grid_pos.x 
+    wy = (y - 1) * grid_size / Float32(dim) + grid_pos.y
+    wz = (z - 1) * grid_size / Float32(dim) + grid_pos.z
     res = run_tape(instructions_d, constants_d, wx, wy, wz)
 
-    if res <= 0.
+    if res <= 0f0
         @inbounds voxels_d[x, y, z] = true
     else 
         @inbounds voxels_d[x, y, z] = false
@@ -150,29 +150,62 @@ function voxelize_kernel(
     return
 end
 
-function voxelize_gpu(dim :: Int, tape :: Tape, grid_pos :: Vec3{Float64}, grid_size :: Float64)
+function voxelize_gpu(dim :: Int, tape :: Tape, grid_pos :: Vec3{Float32}, grid_size :: Float32)
     @assert tape.slot_count <= MAX_SLOT_COUNT
     @assert 0 < dim <= 1024
     
     instructions_d = CuArray(tape.instructions)
-    constants_d = CuArray(tape.constant_pool)
+    constants_d = CuArray(Float32.(tape.constant_pool))
     voxels_d = CuArray{Bool}(undef, (dim, dim, dim))
 
+    # Compile the kernel.
+    kernel = @cuda launch=false voxelize_kernel(
+        dim, grid_pos, grid_size, instructions_d, constants_d, voxels_d)
+
+    # Compute the launch configuration.
     @show t = min(dim, 8)
     @show b = div(dim, t)
     @assert dim == b * t
+    threads = (t, t, t)
+    blocks = (b, b, b)
+
+    # Run the kernel.
     CUDA.@sync begin 
-        @cuda blocks=(b, b, b) threads=(t, t, t) voxelize_kernel(
-            dim, 
-            grid_pos,
-            grid_size,
-            instructions_d, 
-            constants_d, 
-            voxels_d)
+        kernel(dim, grid_pos, grid_size, instructions_d, constants_d, voxels_d; threads, blocks)
     end
 
     return Array(voxels_d)
 end
+
+function benchmark_voxelize_gpu(dim :: Int, tape :: Tape, grid_pos :: Vec3{Float32}, grid_size :: Float32)
+    @assert tape.slot_count <= MAX_SLOT_COUNT
+    @assert 0 < dim <= 1024
+    
+    instructions_d = CuArray(tape.instructions)
+    constants_d = CuArray(Float32.(tape.constant_pool))
+    voxels_d = CuArray{Bool}(undef, (dim, dim, dim))
+
+    # Compile the kernel.
+    kernel = @cuda launch=false voxelize_kernel(
+        dim, grid_pos, grid_size, instructions_d, constants_d, voxels_d)
+
+    # Compute the launch configuration.
+    @show t = min(dim, 8)
+    @show b = div(dim, t)
+    @assert dim == b * t
+    threads = (t, t, t)
+    blocks = (b, b, b)
+
+    function bench()
+        # Run the kernel.
+        CUDA.@sync begin 
+            kernel(dim, grid_pos, grid_size, instructions_d, constants_d, voxels_d; threads, blocks)
+        end
+    end
+
+    @benchmark $bench()
+end
+
 
 #function main()
     # Create the shape.
@@ -187,8 +220,11 @@ end
     tape = node_to_tape(Nodes.constant_fold(shape))
     
     dim = 256
-    voxels_raw = voxelize_gpu(dim, tape, Vec3s.full(-10.), 20.)
+    grid_pos = Vec3s.full(-10f0)
+    grid_size = 20f0
+    voxels_raw = voxelize_gpu(dim, tape, grid_pos, grid_size)
 
+    # Copy the voxels
     voxels = Voxels.empty(Vec3s.full(-10.), 20., dim)
     for x in 1:dim 
         for y in 1:dim
@@ -217,21 +253,3 @@ end
     # Display the image
     imshow(img)
 #end
-
-# Benchmarking kd-voxelizer (menger_sponge(1) with a sphere cut out) :
-# [4, 8, 4, 4]     ==> 7002ms
-# [8, 4, 4, 4]     ==> 7489ms
-# [32, 4, 4]       ==> 7573ms
-# [4, 4, 8, 4]     ==> 7927ms
-# [16, 8, 4]       ==> 8090ms
-# [8, 16, 4]       ==> 8866ms
-# [4, 32, 4]       ==> 10466ms
-# [4, 16, 8]       ==> 13371ms
-# [16, 4, 8]       ==> 13945ms
-# [8, 8, 8]        ==> 13989ms
-# [4, 4, 4, 8]     ==> 14069ms
-# [4, 8, 16]       ==> 25299ms
-# [8, 4, 16]       ==> 26346ms
-# [32, 16]         ==> 26916ms
-# [4, 4, 32]       ==> 48322ms
-# [16, 32]         ==> 48422ms
