@@ -18,4 +18,7 @@
 [16, 32]         ==> 48422ms
 
 # Benchmarking gpu naive voxelizer (menger_sponge(1) with a sphere cut out) :
-[256] ==> 153ms
+naive : slots=32, dim=256 ==> 153ms
+f32   : slots=32, dim=256 ==> 113ms
+f32   : slots=16, dim=256 ==> 102ms
+f32   : slots=32, dyn_shared_mem, dim=256 ==> 89ms

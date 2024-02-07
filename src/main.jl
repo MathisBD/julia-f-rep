@@ -33,49 +33,11 @@ function menger_sponge(n)
     end
 end
 
-function main_old()
-    # Create the shape.
-    shape = menger_sponge(2)
-    shape = Shapes.scale(shape, 12.)
-    shape = Shapes.rotateX(shape, pi / 4)
-    shape = Shapes.rotateY(shape, pi / 4)
-    shape = Shapes.rotateZ(shape, pi / 4)
-    shape &= -Shapes.sphere(Vec3(5.0, 0.0, 6.0), 7.0)
+const MAX_SLOT_COUNT = 32
 
-    # Voxelize
-    tape = node_to_tape(Nodes.constant_fold(shape))
-    println("Tape instruction count : $(length(tape.instructions))")
-
-    dims = [8, 4, 4, 4]
-    #voxels = Voxels.empty(Vec3s.full(-10.), 20., prod(dims))
-    #NaiveVoxelizer.voxelize!(voxels, tape)
-
-    voxels = KdVoxelizer.voxelize(tape, Vec3s.full(-10.), 20., dims)
-    voxels = KdVoxelizer.flatten(voxels)
-
-    # Create a target image.
-    width = 1200
-    height = 900
-    img = fill(RGB{N0f8}(0, 0, 0), (height, width))
-    # Create a camera looking down the z-axis.
-    camera = Camera(
-        Vec3(0.0, 0.0, 30.0), # pos
-        Vec3(0.0, 0.0, -1.0), # forward
-        Vec3(0.0, 1.0, 0.0),  # up
-        Vec3(1.0, 0.0, 0.0),  # right
-        deg2rad(70.0),        # field-of-view in radians
-        Float64(width) / Float64(height)) # aspect ratio
-
-    # Render the image
-    render!(img, camera, voxels, tape)
-
-    # Display the image
-    imshow(img)
-end
-
-const MAX_SLOT_COUNT = 16
 
 function run_tape(
+    id,
     instructions_d :: CuDeviceArray{Instruction}, 
     constants_d :: CuDeviceArray{Float32},
     wx :: Float32, 
@@ -87,7 +49,9 @@ function run_tape(
     slots[2] = wy    
     slots[3] = wz
     
-    @inbounds for inst in instructions_d
+    # Execute the tape instructions.
+    @inbounds for i in 1:length(instructions_d)
+        inst = instructions_d[i]
         if inst.op == Copy
             slots[inst.out_slot] = slots[inst.in_slotA]
         elseif inst.op == LoadConst
@@ -129,22 +93,23 @@ function voxelize_kernel(
     constants_d :: CuDeviceArray{Float32},
     voxels_d :: CuDeviceArray{Bool, 3})
 
-    x = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    y = (blockIdx().y - 1) * blockDim().y + threadIdx().y
-    z = (blockIdx().z - 1) * blockDim().z + threadIdx().z
-    #thread = (threadIdx().z - 1) * blockDim().y * blockDim.x + 
-    #         (threadIdx().y - 1) * blockDim().x + 
-    #         threadIdx().x 
-    
-    wx = (x - 1) * grid_size / Float32(dim) + grid_pos.x 
-    wy = (y - 1) * grid_size / Float32(dim) + grid_pos.y
-    wz = (z - 1) * grid_size / Float32(dim) + grid_pos.z
-    res = run_tape(instructions_d, constants_d, wx, wy, wz)
+    # id in range [0, dim^3 - 1]
+    id = (blockIdx().x - 1) * blockDim().x + threadIdx().x - 1
+
+    # x, y, z in range [0, dim - 1]
+    x = id % dim
+    y = div(id, dim) % dim
+    z = div(id, dim^2)
+
+    wx = x * grid_size / dim + grid_pos.x 
+    wy = y * grid_size / dim + grid_pos.y
+    wz = z * grid_size / dim + grid_pos.z
+    res = run_tape(id, instructions_d, constants_d, wx, wy, wz)
 
     if res <= 0f0
-        @inbounds voxels_d[x, y, z] = true
+        @inbounds voxels_d[x+1, y+1, z+1] = true
     else 
-        @inbounds voxels_d[x, y, z] = false
+        @inbounds voxels_d[x+1, y+1, z+1] = false
     end
 
     return
@@ -152,7 +117,7 @@ end
 
 function voxelize_gpu(dim :: Int, tape :: Tape, grid_pos :: Vec3{Float32}, grid_size :: Float32)
     @assert tape.slot_count <= MAX_SLOT_COUNT
-    @assert 0 < dim <= 1024
+    @assert 0 < dim <= 2048
     
     instructions_d = CuArray(tape.instructions)
     constants_d = CuArray(Float32.(tape.constant_pool))
@@ -163,15 +128,14 @@ function voxelize_gpu(dim :: Int, tape :: Tape, grid_pos :: Vec3{Float32}, grid_
         dim, grid_pos, grid_size, instructions_d, constants_d, voxels_d)
 
     # Compute the launch configuration.
-    @show t = min(dim, 8)
-    @show b = div(dim, t)
-    @assert dim == b * t
-    threads = (t, t, t)
-    blocks = (b, b, b)
+    @show threads = min(dim^3, 256)
+    @show blocks = div(dim^3, threads)
+    @assert dim^3 == blocks * threads
 
     # Run the kernel.
     CUDA.@sync begin 
-        kernel(dim, grid_pos, grid_size, instructions_d, constants_d, voxels_d; threads, blocks)
+        kernel(dim, grid_pos, grid_size, instructions_d, constants_d, voxels_d; 
+            threads, blocks)
     end
 
     return Array(voxels_d)
@@ -179,7 +143,7 @@ end
 
 function benchmark_voxelize_gpu(dim :: Int, tape :: Tape, grid_pos :: Vec3{Float32}, grid_size :: Float32)
     @assert tape.slot_count <= MAX_SLOT_COUNT
-    @assert 0 < dim <= 1024
+    @assert 0 < dim <= 2048
     
     instructions_d = CuArray(tape.instructions)
     constants_d = CuArray(Float32.(tape.constant_pool))
@@ -190,16 +154,15 @@ function benchmark_voxelize_gpu(dim :: Int, tape :: Tape, grid_pos :: Vec3{Float
         dim, grid_pos, grid_size, instructions_d, constants_d, voxels_d)
 
     # Compute the launch configuration.
-    @show t = min(dim, 8)
-    @show b = div(dim, t)
-    @assert dim == b * t
-    threads = (t, t, t)
-    blocks = (b, b, b)
+    @show threads = min(dim^3, 256)
+    @show blocks = div(dim^3, threads)
+    @assert dim^3 == blocks * threads
 
     function bench()
         # Run the kernel.
         CUDA.@sync begin 
-            kernel(dim, grid_pos, grid_size, instructions_d, constants_d, voxels_d; threads, blocks)
+            kernel(dim, grid_pos, grid_size, instructions_d, constants_d, voxels_d; 
+                threads, blocks)
         end
     end
 
